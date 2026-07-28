@@ -1,6 +1,8 @@
 import os
+import time
 import uuid
 import asyncio
+import threading
 from flask import Flask, request, send_file, jsonify
 from flask_cors import CORS
 import edge_tts
@@ -10,6 +12,25 @@ CORS(app)  # allow requests from your WordPress site
 
 AUDIO_DIR = "generated_audio"
 os.makedirs(AUDIO_DIR, exist_ok=True)
+
+MAX_FILE_AGE_SECONDS = 3 * 60  # delete generated audio older than 3 minutes
+
+
+def cleanup_old_files():
+    """Background thread: periodically deletes old audio files so disk never fills up."""
+    while True:
+        try:
+            now = time.time()
+            for fname in os.listdir(AUDIO_DIR):
+                fpath = os.path.join(AUDIO_DIR, fname)
+                if os.path.isfile(fpath) and (now - os.path.getmtime(fpath)) > MAX_FILE_AGE_SECONDS:
+                    os.remove(fpath)
+        except Exception:
+            pass
+        time.sleep(60)  # check every 1 minute
+
+
+threading.Thread(target=cleanup_old_files, daemon=True).start()
 
 # A curated list of good multi-language voices (you can expand this)
 VOICE_LIST = [
